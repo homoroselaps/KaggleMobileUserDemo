@@ -116,9 +116,9 @@ def load_data():
     label_categories = pd.read_csv("data/label_categories.csv")
     apps = app_labels.merge(label_categories, on="label_id", how="left")
     
-    app_events = pd.read_csv("data/app_events_small.csv")
+    app_events = pd.read_csv("data/app_events.csv")
     
-    events = pd.read_csv("data/events_small.csv")
+    events = pd.read_csv("data/events.csv")
     print("Load Data done")
     print("Convert Data")
     events['timestamp'] = events['timestamp'].apply(convertTimestamp)
@@ -209,9 +209,8 @@ def build_features(train, test, phone_brand_device_model, apps, app_events, even
     test_out = test_out.fillna(-999)
     
     # add app count
-    app = pd.read_csv("../input/app_events.csv", dtype={'device_id': np.str})
-    app['appcounts'] = app.groupby(['event_id'])['app_id'].transform('count')
-    app_small = app[['event_id', 'appcounts']].drop_duplicates('event_id', keep='first')
+    app_events['appcounts'] = app_events.groupby(['event_id'])['app_id'].transform('count')
+    app_small = app_events[['event_id', 'appcounts']].drop_duplicates('event_id', keep='first')
     e1=pd.merge(events, app_small, how='left', on='event_id', left_index=True)
     e1.loc[e1.isnull()['appcounts'] ==True, 'appcounts']=0
     e1['appcounts1'] = e1.groupby(['device_id'])['appcounts'].transform('sum')
@@ -242,11 +241,11 @@ def feature_importance(clf,feature_names=[]):
   
 def try_model(train):
     print(train.shape)
-    features = ["phone_brand",  "event_count", "action_radius_max"]
+    features = ["phone_brand", "device_model",  "event_count", "action_radius_max", "medianTime", "minTime", "maxTime", "weekday", "appcounts1"]
     encoder = LabelEncoder()
     train["group"] = encoder.fit_transform(train["group"].values)
     
-    rf = RandomForestClassifier(n_estimators=50, max_depth=7, max_features=2, bootstrap=True, n_jobs=4, random_state=2016, class_weight=None)
+    rf = RandomForestClassifier(n_estimators=50, max_depth=15, max_features=6, bootstrap=True, n_jobs=4, random_state=2016, class_weight=None)
     
     rf.fit(train[features].values, train["group"].values)
     feature_importance(rf, features)
@@ -263,4 +262,7 @@ if __name__ == "__main__":
     
     print(train_out.head(10))
     
-    try_model(train_out)
+    #try_model(train_out)
+    
+    train_out.to_csv("data/train_feat.csv", index=False)
+    test_out.to_csv("data/test_feat.csv", index=False)
