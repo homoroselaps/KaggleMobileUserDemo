@@ -135,7 +135,10 @@ def build_active_time(train, events):
         time = datetime.utcfromtimestamp(timestamp).time()
         return time.hour*60*60 + time.minute*60 + time.second
     def mode(x):
-        return x.mode() if len(x) > 2 else x.values[0]
+        try:
+            return x.mode().values[0] if len(x) > 2 else x.values[0]
+        except:
+            return np.nan
     events['weekday'] = events['timestamp'].apply(extractDayOfWeek)
     events['time'] = events['timestamp'].apply(extractTime)
     did = events[['device_id', 'weekday', 'time']].groupby(['device_id'])
