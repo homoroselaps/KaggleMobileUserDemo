@@ -78,9 +78,17 @@ def load_data():
     
     return gender_age_train, gender_age_test, phone_brand_device_model, apps, app_events, events
 
-def build_event_count():
-    def event_count(id):
+def build_event_count(train, test, events):
+    '''
+    number of events per device
+    '''
+    def event_count(dev_id):
         return 1
+    
+    event_counts = []
+    for dev_id in train["device_id"].values:
+        event_counts.append(event_count(dev_id))
+    train["event_count"]
     
 def build_features(train, test, phone_brand_device_model, apps, app_events, events):
     train_out = train.drop(["gender", "age"], axis=1)
