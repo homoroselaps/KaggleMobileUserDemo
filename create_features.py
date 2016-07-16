@@ -94,7 +94,7 @@ def load_data():
     
     app_events = pd.read_csv("data/app_events_small.csv")
     
-    events = pd.read_csv("data/events_small.csv").head()
+    events = pd.read_csv("data/events_small.csv")
     print("Load Data done")
     print("Convert Data")
     events['timestamp'] = events['timestamp'].apply(convertTimestamp)
@@ -118,7 +118,8 @@ def build_active_time(train, events):
     weekday = did['weekday'].agg(mode)
     result = did['time'].agg(['median', 'max', 'min'])
     result['weekday'] = weekday.values
-    return result
+    result.rename(columns={'median': 'medianTime', 'min': 'minTime', 'max': 'maxTime'}, inplace=True)
+    return result.reset_index()
 
 def build_event_count(df, events):
     '''
@@ -164,6 +165,14 @@ def build_features(train, test, phone_brand_device_model, apps, app_events, even
     # add max action distance
     train_out["action_radius_max"] = action_distance(train_out, events)
     test_out["action_radius_max"] = action_distance(test_out, events)
+
+    # add event time median min max
+    tmp = build_active_time(train,events)
+    train_out = train_out.merge(tmp, on='device_id', how='left')
+    train_out = train_out.fillna(-999)
+    tmp = build_active_time(test, events)
+    test_out = test_out.merge(tmp, on='device_id', how='left')
+    test_out = test_out.fillna(-999)
     
     print("done")
     return train_out, test_out
