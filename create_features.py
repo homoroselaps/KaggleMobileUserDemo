@@ -65,7 +65,11 @@ brands = {
         "聆韵": "lingyun",
         "小米": "xiaomi",
         "酷派": "coolpad",
-        "华为": "huawei"     
+        "华为": "huawei",
+        "世纪天元": "tianyuan",
+        "世纪星": "unknown",
+        "中兴": "zte",
+        "丰米": "wahot"    
 }
 
 epoch = datetime.utcfromtimestamp(0)
@@ -120,7 +124,6 @@ def build_event_count(df, events):
     '''
     number of events per device
     '''
-    #event_counts = events[["device_id","event_id"]][events["device_id"].isin(df["device_id"])].groupby("device_id").agg("count")
     event_counts = pd.DataFrame({'count' : events[["device_id","event_id"]][events["device_id"].isin(df["device_id"])].groupby("device_id").size()}).reset_index()
     tmp = df.merge(event_counts, on="device_id", how="left").fillna(0.0)
     return np.array(tmp["count"].values)    
@@ -139,8 +142,6 @@ def action_distance(df, events):
             max_dist_list.append(np.max(D))
         except:
             max_dist_list.append(0.0)
-    print(len(df["device_id"].values.tolist()))
-    print(len(max_dist_list)) # 74645
     return np.array(max_dist_list)
 
 def build_features(train, test, phone_brand_device_model, apps, app_events, events):
