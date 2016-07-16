@@ -78,9 +78,17 @@ def load_data():
     
     return gender_age_train, gender_age_test, phone_brand_device_model, apps, app_events, events
 
-def build_features(train, test, phone_brand_device_model, apps, app_events, events):
+def build_event_count():
+    def event_count(id):
+        return 1
     
-    return None
+def build_features(train, test, phone_brand_device_model, apps, app_events, events):
+    train_out = train.drop(["gender", "age"], axis=1)
+    test_out = test
+    
+    train_out, test_out = build_event_count
+    
+    return train_out, test_out
     
 if __name__ == "__main__":
     gender_age_train, gender_age_test, phone_brand_device_model, apps, app_events, events = load_data()
