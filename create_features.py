@@ -3,6 +3,9 @@
 import numpy as np
 import pandas as pd
 from datetime import datetime
+from sklearn.ensemble.forest import RandomForestClassifier
+from sklearn.cross_validation import StratifiedKFold, cross_val_score
+from sklearn.preprocessing import LabelEncoder
 
 brands = {
         "三星": "samsung",
@@ -59,7 +62,10 @@ brands = {
         "酷珀": "kupo",
         "谷歌": "google",
         "昂达": "ada",
-        "聆韵": "lingyun"
+        "聆韵": "lingyun",
+        "小米": "xiaomi",
+        "酷派": "coolpad",
+        "华为": "huawei"     
 }
 
 epoch = datetime.utcfromtimestamp(0)
@@ -90,6 +96,7 @@ def load_data():
     events['timestamp'] = events['timestamp'].apply(convertTimestamp)
     print("Convert Done")
 
+    print("done")
     return gender_age_train, gender_age_test, phone_brand_device_model, apps, app_events, events
 
 def build_active_time(train, events):
@@ -109,27 +116,94 @@ def build_active_time(train, events):
     result['weekday'] = weekday.values
     return result
 
-def build_event_count(train, test, events):
+def build_event_count(df, events):
     '''
     number of events per device
     '''
-    def event_count(dev_id):
-        return 1
-    
-    event_counts = []
-    for dev_id in train["device_id"].values:
-        event_counts.append(event_count(dev_id))
-    
+    #event_counts = events[["device_id","event_id"]][events["device_id"].isin(df["device_id"])].groupby("device_id").agg("count")
+    event_counts = pd.DataFrame({'count' : events[["device_id","event_id"]][events["device_id"].isin(df["device_id"])].groupby("device_id").size()}).reset_index()
+    tmp = df.merge(event_counts, on="device_id", how="left").fillna(0.0)
+    return np.array(tmp["count"].values)    
+
+def action_distance(df, events):
+    '''
+    maximual euclidian distance between the events
+    '''
+    from scipy.spatial.distance import pdist, squareform
+    max_dist_list = []
+    grouped = events.groupby("device_id")[["longitude","latitude"]]
+    for dev_id in df["device_id"].values:
+        try:
+            A = grouped.get_group(dev_id).values.transpose()
+            D = squareform(pdist(A))
+            max_dist_list.append(np.max(D))
+        except:
+            max_dist_list.append(0.0)
+    print(len(df["device_id"].values.tolist()))
+    print(len(max_dist_list)) # 74645
+    return np.array(max_dist_list)
+
 def build_features(train, test, phone_brand_device_model, apps, app_events, events):
+    print("BUILD FEATURES...")
     train_out = train.drop(["gender", "age"], axis=1)
     test_out = test
+
+    # add brand features
+    train_out = train_out.merge(phone_brand_device_model[["device_id","phone_brand"]], on="device_id", how="left")
+    test_out = test_out.merge(phone_brand_device_model[["device_id","phone_brand"]], on="device_id", how="left")
+    encoder = LabelEncoder()
+    train_out["phone_brand"] = encoder.fit_transform(train_out["phone_brand"].values)
+    test_out["phone_brand"] = encoder.fit_transform(test_out["phone_brand"].values)
+    print("Number of brands: %d" %(len(list(encoder.classes_))))
+
+    # add event count
+    train_out["event_count"] = build_event_count(train_out, events)
+    test_out["event_count"] = build_event_count(test_out, events)
+
+    # add max action distance
+    train_out["action_radius_max"] = action_distance(train_out, events)
+    test_out["action_radius_max"] = action_distance(test_out, events)
     
-    #train_out, test_out = build_event_count()
-    build_active_time(train, events)
-    
+    print("done")
     return train_out, test_out
+
+def feature_importance(clf,feature_names=[]):
+    '''
+    print importance of the features
+    '''
+    print()
+    print("Feature importance of the fitted model")
+    print()
+    importances = clf.feature_importances_
+    indices = np.argsort(importances)[::-1]
+    for f in range(len(feature_names)):
+        if feature_names != []:
+            print("%s : (%f)" % (feature_names[indices[f]], importances[indices[f]]))
+        else:
+            print("(%f)" % (importances[indices[f]]))
+    print()
+  
+def try_model(train):
+    print(train.shape)
+    features = ["phone_brand",  "event_count", "action_radius_max"]
+    encoder = LabelEncoder()
+    train["group"] = encoder.fit_transform(train["group"].values)
+    
+    rf = RandomForestClassifier(n_estimators=50, max_depth=7, max_features=2, bootstrap=True, n_jobs=4, random_state=2016, class_weight=None)
+    
+    rf.fit(train[features].values, train["group"].values)
+    feature_importance(rf, features)
+    
+    skf = StratifiedKFold(train["group"].values, n_folds=5, shuffle=True, random_state=2016)
+    scores = cross_val_score(rf, train[features].values, train["group"].values, scoring="log_loss", cv=skf, n_jobs=1)
+    print(scores)
+    print("RF Score: %0.5f" %(-scores.mean())) # RF Score: 2.39884
     
 if __name__ == "__main__":
     gender_age_train, gender_age_test, phone_brand_device_model, apps, app_events, events = load_data()
     
-    build_features(gender_age_train, gender_age_test, phone_brand_device_model, apps, app_events, events)
+    train_out, test_out = build_features(gender_age_train, gender_age_test, phone_brand_device_model, apps, app_events, events)
+    
+    print(train_out.head(10))
+    
+    try_model(train_out)
