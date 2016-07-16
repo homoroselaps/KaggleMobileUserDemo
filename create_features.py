@@ -69,7 +69,31 @@ brands = {
         "世纪天元": "tianyuan",
         "世纪星": "unknown",
         "中兴": "zte",
-        "丰米": "wahot"    
+        "丰米": "wahot",
+        "索尼" : "Sony",
+        "欧博信" : "Opssom",
+        "奇酷" : "Qiku",
+        "酷比" : "CUBE",
+        "康佳" : "Konka",
+        "亿通" : "Yitong",
+        "金星数码" : "JXD",
+        "至尊宝" : "Monkey King",
+        "百立丰" : "Hundred Li Feng",
+        "贝尔丰" : "Bifer",
+        "百加" : "Bacardi",
+        "诺亚信" : "Noain",
+        "广信" : "Kingsun",
+        "世纪天元" : "Ctyon",
+        "青葱" : "Cong",
+        "果米" : "Taobao",
+        "斐讯" : "Phicomm",
+        "长虹" : "Changhong",
+        "欧奇" : "Oukimobile",
+        "先锋" : "XFPLAY",
+        "台电" : "Teclast",
+        "大Q" : "Daq",
+        "蓝魔" : "Ramos",
+        "奥克斯" : "AUX" 
 }
 
 epoch = datetime.utcfromtimestamp(0)
@@ -144,19 +168,26 @@ def action_distance(df, events):
             max_dist_list.append(0.0)
     return np.array(max_dist_list)
 
+def map_column(table, f):
+    labels = sorted(table[f].unique())
+    mappings = dict()
+    for i in range(len(labels)):
+        mappings[labels[i]] = i
+    table = table.replace({f: mappings})
+    return table
+
 def build_features(train, test, phone_brand_device_model, apps, app_events, events):
     print("BUILD FEATURES...")
     train_out = train.drop(["gender", "age"], axis=1)
     test_out = test
 
     # add brand features
-    train_out = train_out.merge(phone_brand_device_model[["device_id","phone_brand"]], on="device_id", how="left")
-    test_out = test_out.merge(phone_brand_device_model[["device_id","phone_brand"]], on="device_id", how="left")
-    encoder = LabelEncoder()
-    train_out["phone_brand"] = encoder.fit_transform(train_out["phone_brand"].values)
-    test_out["phone_brand"] = encoder.fit_transform(test_out["phone_brand"].values)
-    print("Number of brands: %d" %(len(list(encoder.classes_))))
-
+    phone_brand_device_model.drop_duplicates('device_id', keep='first', inplace=True)
+    phone_brand_device_model = map_column(phone_brand_device_model, 'phone_brand')
+    phone_brand_device_model = map_column(phone_brand_device_model, 'device_model')
+    train_out = pd.merge(train_out, phone_brand_device_model, how='left', on='device_id', left_index=True)
+    test_out = pd.merge(test_out, phone_brand_device_model, how='left', on='device_id', left_index=True)
+    
     # add event count
     train_out["event_count"] = build_event_count(train_out, events)
     test_out["event_count"] = build_event_count(test_out, events)
@@ -164,6 +195,19 @@ def build_features(train, test, phone_brand_device_model, apps, app_events, even
     # add max action distance
     train_out["action_radius_max"] = action_distance(train_out, events)
     test_out["action_radius_max"] = action_distance(test_out, events)
+    
+    # add app count
+    app = pd.read_csv("../input/app_events.csv", dtype={'device_id': np.str})
+    app['appcounts'] = app.groupby(['event_id'])['app_id'].transform('count')
+    app_small = app[['event_id', 'appcounts']].drop_duplicates('event_id', keep='first')
+    e1=pd.merge(events, app_small, how='left', on='event_id', left_index=True)
+    e1.loc[e1.isnull()['appcounts'] ==True, 'appcounts']=0
+    e1['appcounts1'] = e1.groupby(['device_id'])['appcounts'].transform('sum')
+    e1_small = e1[['device_id', 'appcounts1']].drop_duplicates('device_id', keep='first')
+    train_out = pd.merge(train_out, e1_small, how='left', on='device_id', left_index=True)
+    train_out.fillna(-1, inplace=True)
+    test_out = pd.merge(test_out, e1_small, how='left', on='device_id', left_index=True)
+    test_out.fillna(-1, inplace=True)
     
     print("done")
     return train_out, test_out
