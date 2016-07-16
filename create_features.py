@@ -58,7 +58,11 @@ brands = {
         "酷珀": "kupo",
         "谷歌": "google",
         "昂达": "ada",
-        "聆韵": "lingyun"
+        "聆韵": "lingyun",
+        "小米": "xiaomi",
+        "酷派": "coolpad",
+        "华为": "huawei"
+        
 }
 
 def load_data():
@@ -78,27 +82,36 @@ def load_data():
     
     return gender_age_train, gender_age_test, phone_brand_device_model, apps, app_events, events
 
-def build_event_count(train, test, events):
+def build_event_count(df, events):
     '''
     number of events per device
     '''
-    def event_count(dev_id):
-        return 1
-    
-    event_counts = []
-    for dev_id in train["device_id"].values:
-        event_counts.append(event_count(dev_id))
-    train["event_count"]
-    
+    #event_counts = events[["device_id","event_id"]][events["device_id"].isin(df["device_id"])].groupby("device_id").agg("count")
+    event_counts = pd.DataFrame({'count' : events[["device_id","event_id"]][events["device_id"].isin(df["device_id"])].groupby("device_id").size()}).reset_index()
+    tmp = df.merge(event_counts, on="device_id", how="left").fillna(0.0)
+    return np.array(tmp["count"].values)    
+
 def build_features(train, test, phone_brand_device_model, apps, app_events, events):
     train_out = train.drop(["gender", "age"], axis=1)
     test_out = test
     
-    train_out, test_out = build_event_count
+    # add brand features
+    train_out = train_out.merge(phone_brand_device_model[["device_id","phone_brand"]], on="device_id", how="left")
+    test_out = test_out.merge(phone_brand_device_model[["device_id","phone_brand"]], on="device_id", how="left")
+    
+    # add event count
+    train_out["event_count"] = build_event_count(train_out, events)
+    test_out["event_count"] = build_event_count(test_out, events)
+    
+    # add longitude and latitude
+    train_out = train_out.merge(events[["device_id","longitude","latitude"]], on="device_id", how="left").fillna(-999)
+    test_out = test_out.merge(events[["device_id","longitude","latitude"]], on="device_id", how="left").fillna(-999)
     
     return train_out, test_out
     
 if __name__ == "__main__":
     gender_age_train, gender_age_test, phone_brand_device_model, apps, app_events, events = load_data()
     
-    build_features(gender_age_train, gender_age_test, phone_brand_device_model, apps, app_events, events)
+    train_out, test_out = build_features(gender_age_train, gender_age_test, phone_brand_device_model, apps, app_events, events)
+    
+    print(train_out.head(10))
