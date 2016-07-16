@@ -2,6 +2,7 @@
 
 import numpy as np
 import pandas as pd
+from datetime import datetime
 
 brands = {
         "三星": "samsung",
@@ -61,7 +62,16 @@ brands = {
         "聆韵": "lingyun"
 }
 
+epoch = datetime.utcfromtimestamp(0)
+
+def unix_time_seconds(dt):
+    return (dt - epoch).total_seconds()
+
+def convertTimestamp(value):
+    return unix_time_seconds(datetime.strptime(value, '%Y-%m-%d %H:%M:%S'))
+
 def load_data():
+    print("Load Data")
     gender_age_train = pd.read_csv("data/gender_age_train.csv")
     gender_age_test = pd.read_csv("data/gender_age_test.csv")
     
@@ -72,11 +82,32 @@ def load_data():
     label_categories = pd.read_csv("data/label_categories.csv")
     apps = app_labels.merge(label_categories, on="label_id", how="left")
     
-    app_events = pd.read_csv("data/app_events.csv")
+    app_events = pd.read_csv("data/app_events_small.csv")
     
-    events = pd.read_csv("data/events.csv")
-    
+    events = pd.read_csv("data/events_small.csv").head()
+    print("Load Data done")
+    print("Convert Data")
+    events['timestamp'] = events['timestamp'].apply(convertTimestamp)
+    print("Convert Done")
+
     return gender_age_train, gender_age_test, phone_brand_device_model, apps, app_events, events
+
+def build_active_time(train, events):
+    def extractDayOfWeek(timestamp):
+        date = datetime.utcfromtimestamp(timestamp)
+        return date.weekday()
+    def extractTime(timestamp):
+        time = datetime.utcfromtimestamp(timestamp).time()
+        return time.hour*60*60 + time.minute*60 + time.second
+    def mode(x):
+        return x.mode() if len(x) > 2 else x.values[0]
+    events['weekday'] = events['timestamp'].apply(extractDayOfWeek)
+    events['time'] = events['timestamp'].apply(extractTime)
+    did = events[['device_id', 'weekday', 'time']].groupby(['device_id'])
+    weekday = did['weekday'].agg(mode)
+    result = did['time'].agg(['median', 'max', 'min'])
+    result['weekday'] = weekday.values
+    return result
 
 def build_event_count(train, test, events):
     '''
@@ -88,13 +119,13 @@ def build_event_count(train, test, events):
     event_counts = []
     for dev_id in train["device_id"].values:
         event_counts.append(event_count(dev_id))
-    train["event_count"]
     
 def build_features(train, test, phone_brand_device_model, apps, app_events, events):
     train_out = train.drop(["gender", "age"], axis=1)
     test_out = test
     
-    train_out, test_out = build_event_count
+    #train_out, test_out = build_event_count()
+    build_active_time(train, events)
     
     return train_out, test_out
     
