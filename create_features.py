@@ -2,6 +2,9 @@
 
 import numpy as np
 import pandas as pd
+from sklearn.ensemble.forest import RandomForestClassifier
+from sklearn.cross_validation import StratifiedKFold, cross_val_score
+from sklearn.preprocessing import LabelEncoder
 
 brands = {
         "三星": "samsung",
@@ -104,10 +107,43 @@ def build_features(train, test, phone_brand_device_model, apps, app_events, even
     test_out["event_count"] = build_event_count(test_out, events)
     
     # add longitude and latitude
-    train_out = train_out.merge(events[["device_id","longitude","latitude"]], on="device_id", how="left").fillna(-999)
-    test_out = test_out.merge(events[["device_id","longitude","latitude"]], on="device_id", how="left").fillna(-999)
+    #train_out = train_out.merge(events[["device_id","longitude","latitude"]], on="device_id", how="left").fillna(-999)
+    #test_out = test_out.merge(events[["device_id","longitude","latitude"]], on="device_id", how="left").fillna(-999)
     
     return train_out, test_out
+
+def feature_importance(clf,feature_names=[]):
+    '''
+    print importance of the features
+    '''
+    print()
+    print("Feature importance of the fitted model")
+    print()
+    importances = clf.feature_importances_
+    indices = np.argsort(importances)[::-1]
+    for f in range(len(feature_names)):
+        if feature_names != []:
+            print("%s : (%f)" % (feature_names[indices[f]], importances[indices[f]]))
+        else:
+            print("(%f)" % (importances[indices[f]]))
+    print()
+  
+def try_model(train):
+    print(train.shape)
+    features = ["phone_brand",  "event_count"]
+    encoder = LabelEncoder()
+    train["phone_brand"] = encoder.fit_transform(train["phone_brand"].values)
+    train["group"] = encoder.fit_transform(train["group"].values)
+    
+    rf = RandomForestClassifier(n_estimators=50, max_depth=7, max_features=2, bootstrap=True, n_jobs=4, random_state=2016, class_weight=None)
+    
+    rf.fit(train[features].values, train["group"].values)
+    feature_importance(rf, features)
+    
+    skf = StratifiedKFold(train["group"].values, n_folds=5, shuffle=True, random_state=2016)
+    scores = cross_val_score(rf, train[features].values, train["group"].values, scoring="log_loss", cv=skf, n_jobs=1)
+    print(scores)
+    print("RF Score: %0.5f" %(-scores.mean()))
     
 if __name__ == "__main__":
     gender_age_train, gender_age_test, phone_brand_device_model, apps, app_events, events = load_data()
@@ -115,3 +151,5 @@ if __name__ == "__main__":
     train_out, test_out = build_features(gender_age_train, gender_age_test, phone_brand_device_model, apps, app_events, events)
     
     print(train_out.head(10))
+    
+    # try_model(train_out)
