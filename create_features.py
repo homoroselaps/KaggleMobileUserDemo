@@ -64,11 +64,11 @@ brands = {
         "聆韵": "lingyun",
         "小米": "xiaomi",
         "酷派": "coolpad",
-        "华为": "huawei"
-        
+        "华为": "huawei"     
 }
 
 def load_data():
+    print("LOAD DATA...")
     gender_age_train = pd.read_csv("data/gender_age_train.csv")
     gender_age_test = pd.read_csv("data/gender_age_test.csv")
     
@@ -83,6 +83,7 @@ def load_data():
     
     events = pd.read_csv("data/events.csv")
     
+    print("done")
     return gender_age_train, gender_age_test, phone_brand_device_model, apps, app_events, events
 
 def build_event_count(df, events):
@@ -94,22 +95,46 @@ def build_event_count(df, events):
     tmp = df.merge(event_counts, on="device_id", how="left").fillna(0.0)
     return np.array(tmp["count"].values)    
 
+def action_distance(df, events):
+    '''
+    maximual euclidian distance between the events
+    '''
+    from scipy.spatial.distance import pdist, squareform
+    max_dist_list = []
+    grouped = events.groupby("device_id")[["longitude","latitude"]]
+    for dev_id in df["device_id"].values:
+        try:
+            A = grouped.get_group(dev_id).values.transpose()
+            D = squareform(pdist(A))
+            max_dist_list.append(np.max(D))
+        except:
+            max_dist_list.append(0.0)
+    print(len(df["device_id"].values.tolist()))
+    print(len(max_dist_list)) # 74645
+    return np.array(max_dist_list)
+
 def build_features(train, test, phone_brand_device_model, apps, app_events, events):
+    print("BUILD FEATURES...")
     train_out = train.drop(["gender", "age"], axis=1)
     test_out = test
-    
+
     # add brand features
     train_out = train_out.merge(phone_brand_device_model[["device_id","phone_brand"]], on="device_id", how="left")
     test_out = test_out.merge(phone_brand_device_model[["device_id","phone_brand"]], on="device_id", how="left")
-    
+    encoder = LabelEncoder()
+    train_out["phone_brand"] = encoder.fit_transform(train_out["phone_brand"].values)
+    test_out["phone_brand"] = encoder.fit_transform(test_out["phone_brand"].values)
+    print("Number of brands: %d" %(len(list(encoder.classes_))))
+
     # add event count
     train_out["event_count"] = build_event_count(train_out, events)
     test_out["event_count"] = build_event_count(test_out, events)
+
+    # add max action distance
+    train_out["action_radius_max"] = action_distance(train_out, events)
+    test_out["action_radius_max"] = action_distance(test_out, events)
     
-    # add longitude and latitude
-    #train_out = train_out.merge(events[["device_id","longitude","latitude"]], on="device_id", how="left").fillna(-999)
-    #test_out = test_out.merge(events[["device_id","longitude","latitude"]], on="device_id", how="left").fillna(-999)
-    
+    print("done")
     return train_out, test_out
 
 def feature_importance(clf,feature_names=[]):
@@ -130,9 +155,8 @@ def feature_importance(clf,feature_names=[]):
   
 def try_model(train):
     print(train.shape)
-    features = ["phone_brand",  "event_count"]
+    features = ["phone_brand",  "event_count", "action_radius_max"]
     encoder = LabelEncoder()
-    train["phone_brand"] = encoder.fit_transform(train["phone_brand"].values)
     train["group"] = encoder.fit_transform(train["group"].values)
     
     rf = RandomForestClassifier(n_estimators=50, max_depth=7, max_features=2, bootstrap=True, n_jobs=4, random_state=2016, class_weight=None)
@@ -143,7 +167,7 @@ def try_model(train):
     skf = StratifiedKFold(train["group"].values, n_folds=5, shuffle=True, random_state=2016)
     scores = cross_val_score(rf, train[features].values, train["group"].values, scoring="log_loss", cv=skf, n_jobs=1)
     print(scores)
-    print("RF Score: %0.5f" %(-scores.mean()))
+    print("RF Score: %0.5f" %(-scores.mean())) # RF Score: 2.39884
     
 if __name__ == "__main__":
     gender_age_train, gender_age_test, phone_brand_device_model, apps, app_events, events = load_data()
@@ -152,4 +176,4 @@ if __name__ == "__main__":
     
     print(train_out.head(10))
     
-    # try_model(train_out)
+    try_model(train_out)
